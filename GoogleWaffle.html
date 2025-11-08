@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Google Waffle — Responsive Scrollable Widget (Sandbox)</title>
+<!-- Logo and branding by Google.  Code Alexbarbershop with help from ChatGPT & Gooogle Gemini.  No rights reserved.   -->
+<style>
+  :root{
+    --bg: #f8fafd;
+    --card: #ffffff;
+    --text: #202124;
+    --muted: #5f6368;
+    --accent: #1a73e8;
+    --border: #e6eefb;
+    --shadow: 0 6px 18px rgba(16,24,40,0.12);
+    --radius: 28px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1112;
+      --card:#151617;
+      --text:#e8eaed;
+      --muted:#bdbdbd;
+      --accent:#90caf9;
+      --border:#2f3133;
+      --shadow: 0 6px 20px rgba(0,0,0,0.6);
+    }
+  }
+
+  html,body{
+    height:100%;
+    margin:0;
+    font-family: "Google Sans", Roboto, system-ui, -apple-system, "Segoe UI", Arial;
+    background:var(--bg);
+    color:var(--text);
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+    box-sizing:border-box;
+  }
+
+  /* Frame: fixed boundary with rounded edges */
+  .widget-frame{
+    width: min(420px, 96vw);       /* responsive between small and modest widths */
+    max-width: 480px;
+    min-width: 300px;
+    height: 640px;                /* authentic height similar to original */
+    border-radius: var(--radius);
+    overflow: hidden;             /* preserve rounded corners */
+    box-shadow: var(--shadow);
+    background: transparent;
+    display:flex;
+    align-items:stretch;
+    justify-content:center;
+  }
+
+  /* Inner card that contains header + scrollable area */
+  .widget-card{
+    background:var(--card);
+    width:100%;
+    height:100%;
+    border-radius: var(--radius);
+    display:flex;
+    flex-direction:column;
+    box-sizing:border-box;
+    border: 1px solid var(--border);
+  }
+
+  /* Header (compact search bar area) */
+  .widget-header{
+    padding:12px 14px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    position:relative;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+  }
+
+  .search-box {
+    --search-height: 40px;
+    background: rgba(0,0,0,0.03);
+    border-radius: 999px;
+    padding: 6px 10px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    width:100%;
+    box-sizing:border-box;
+    transition: background .12s ease, box-shadow .12s ease;
+  }
+  @media (prefers-color-scheme: dark){
+    .search-box { background: rgba(255,255,255,0.02); }
+  }
+  .search-input {
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 14px;
+    color: var(--text);
+    width:100%;
+    padding: 6px 6px;
+  }
+  .search-input::placeholder { color: var(--muted); opacity: 0.9; }
+
+  /* subtle magnifier (inline svg container) */
+  .magnifier {
+    width:18px;
+    height:18px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    opacity:0.7;
+    flex: 0 0 18px;
+  }
+
+  /* suggestion dropdown */
+  .suggestions {
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    top: calc(12px + 40px + 6px); /* header top + search height + gap */
+    background: var(--card);
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(16,24,40,0.12);
+    border: 1px solid var(--border);
+    z-index: 40;
+    max-height: 240px;
+    overflow: auto;
+    display:none; /* toggled by JS */
+  }
+  .suggestions[aria-hidden="false"]{ display:block; }
+  .suggestions ul{ list-style:none; margin:0; padding:6px 0; }
+  .suggestions li{
+    padding:8px 12px;
+    cursor:pointer;
+    color:var(--text);
+    font-size:14px;
+  }
+  .suggestions li[aria-selected="true"],
+  .suggestions li:hover{
+    background: rgba(26,115,232,0.08);
+  }
+
+  /* scrollable area */
+  .scroll-area{
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    flex:1 1 auto;
+    padding:12px 12px 18px 12px;
+  }
+
+  /* grid: 3 columns stable, tiles scale responsively, but number of rows/columns is fixed. */
+  .grid {
+    display:grid;
+    grid-template-columns: repeat(3, 1fr); /* Locked to 3 columns (see above).*/
+    gap:10px;
+    justify-items:center;
+    align-items:start;
+    width:100%;
+  }
+
+  .tile {
+    width: 84px;
+    height: 84px;
+    border-radius: 12px;
+    text-decoration:none;
+    color:var(--text);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    transition: transform .12s ease, background .12s ease;
+    padding:6px;
+    box-sizing:border-box;
+  }
+  .tile:focus { outline: none; box-shadow: 0 0 0 4px rgba(26,115,232,0.08); border-radius:12px; }
+  .tile:hover { transform: translateY(-4px); background: rgba(26,115,232,0.04); }
+
+  /* Except where permalinked these all reference Google's official sprite sheet "p_2x_6ab3ae91cfe4.png". If icon links break due to url depreciation, retrieve from https://web.archive.org/web/20251107022348/https://ssl.gstatic.com/gb/images/sprites/p_2x_6ab3ae91cfe4.png and host yourself.  */
+  .icon {
+    width: clamp(36px, 9.6vw, 53px); /* Scales a little with width. */
+    height: clamp(36px, 9.6vw, 53px);
+    background-image: url("https://ssl.gstatic.com/gb/images/sprites/p_2x_6ab3ae91cfe4.png");
+    background-size: 53px 3011px;
+    background-repeat: no-repeat;
+    margin-bottom:6px;
+    flex: 0 0 auto;
+  }
+
+  .label {
+    font-size: 13px;
+    text-align:center;
+    line-height:1.1;
+    max-width:78px;
+    white-space:nowrap;
+    text-overflow:ellipsis;
+    overflow:hidden;
+  }
+
+  /* Divider between sections */
+  .divider {
+    height:1px;
+    background:var(--border);
+    margin: 8px 12px;
+    border-radius:2px;
+  }
+
+  /* small responsive tweaks */
+  @media (max-width:360px){
+    .tile { width:76px; height:76px; }
+  }
+
+  /* custom scrollbars (light tweak) */
+  .scroll-area::-webkit-scrollbar { width:8px; }
+  .scroll-area::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius:8px; }
+  @media (prefers-color-scheme: dark){
+    .scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
+  }
+</style>
+</head>
+<body>
+  <div class="widget-frame" role="region" aria-label="Google apps widget">
+    <div class="widget-card" role="application">
+      <!-- Header with the compact search bar.  Note that suggestions don't populate in Google Sites demo version due to javascript restrictions there but they should work if ported elsewhere. -->
+      <div class="widget-header">
+        <form id="searchForm" action="https://www.google.com/search" method="GET" target="_blank" style="width:100%;">
+          <div class="search-box" role="search" aria-haspopup="listbox" aria-expanded="false">
+            <div class="magnifier" aria-hidden="true">
+              <!-- Inline SVG magnifier. -->
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                <path d="M11 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"></path>
+                <path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"></path>
+              </svg>
+            </div>
+            <!-- Visible input; name="q" so the GET form directly opens Google search. -->
+            <input id="searchInput" class="search-input" name="q"
+                   type="search" autocomplete="on"
+                   placeholder="Search Google or type a service..."
+                   aria-label="Search Google"
+                   spellcheck="false" />
+
+            <!-- Hidden 'submit query' button; Enter key to open Google search in new tab.  -->
+            <input type="submit" style="display:none;">
+          </div>
+        </form>
+
+        <!-- Customizable search autocomplete suggestions dropdown (not working on Google Sites demo...) -->
+        <div id="suggestBox" class="suggestions" aria-hidden="true" role="listbox" aria-label="Search suggestions">
+          <ul id="suggestList" role="presentation"></ul>
+        </div>
+      </div>
+
+      <!-- Scrollable apps menu area with grid and divider. -->
+      <div class="scroll-area" id="scrollArea">
+        <!-- Google Apps/Links top section (5 rows x 3 columns above the divider; 15 total–Same as current Google search page version). Note that the icons are determined by the Google Sprite sheet position on the png referenced above.  See Google Labs and Waze icons for compatible alternative syntax using direct icon url link if icon not on sprite sheet is desired. -->
+        <div class="grid" role="list" aria-label="Primary Google apps">
+          <a class="tile" role="listitem" href="https://myaccount.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -2088px"></span><span class="label">Account</span></a>
+          <a class="tile" role="listitem" href="https://www.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -812px"></span><span class="label">Search</span></a>
+          <a class="tile" role="listitem" href="https://maps.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -2146px"></span><span class="label">Maps</span></a>
+
+          <a class="tile" role="listitem" href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -1102px"></span><span class="label">YouTube</span></a>
+          <a class="tile" role="listitem" href="https://news.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -232px"></span><span class="label">News</span></a>
+          <a class="tile" role="listitem" href="https://mail.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -522px"></span><span class="label">Gmail</span></a>
+
+          <a class="tile" role="listitem" href="https://gemini.google.com" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -1917px"></span><span class="label">Gemini</span></a>
+          <a class="tile" role="listitem" href="https://labs.google/FX" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-image: url('https://labs.google/favicon.ico'); background-size: contain; background-position: center;"></span><span class="label">Labs FX</span></a>
+          <a class="tile" role="listitem" href="https://earth.google.com" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -1624px"></span><span class="label">Earth</span></a>
+
+          <a class="tile" role="listitem" href="https://drive.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -2030px"></span><span class="label">Drive</span></a>
+			<a class="tile" role="listitem" href="https://voice.google.com" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -350px"></span><span class="label">Voice</span></a>
+          <a class="tile" role="listitem" href="https://chromewebstore.google.com" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -2785px"></span><span class="label">Extensions</span></a>
+
+          <a class="tile" role="listitem" href="https://translate.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -986px"></span><span class="label">Translate</span></a>
+          <a class="tile" role="listitem" href="https://photos.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -1682px"></span><span class="label">Photos</span></a>
+          <a class="tile" role="listitem" href="https://www.google.com/shopping" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -2436px"></span><span class="label">Shopping</span></a>
+        </div>
+        <!-- I recommend leaving the divider alone as moving it will break the CSS if you don't know what you're doing. Swapping app positions (from <a class to </a> will not break it though, as long as the apps are swapped one for one/line for line. More advanced coders comfortable with CSS can disregard.  -->
+
+        <div class="divider" role="separator" aria-hidden="true"></div>
+
+        <!-- Bottom section (6 rows x 3 cols = 18 slots, some blanks to total 31 links) -->
+        <div class="grid" role="list" aria-label="Additional Google apps">
+
+		  <a class="tile" role="listitem" href="https://sites.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -2380px"></span><span class="label">Sites</span></a>
+			          <a class="tile" role="listitem" href="https://docs.google.com/videos/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -2960px"></span><span class="label">Vids</span></a>
+			          <a class="tile" role="listitem" href="https://chat.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -2494px"></span><span class="label">Chat</span></a>
+
+			
+		  <a class="tile" role="listitem" href="https://meet.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -1856px"></span><span class="label">Meet</span></a>
+  <!-- Use one of the lines below or the Google Labs one as a template if an external resource (icon not on the Google Sprite sheet) is needed.  --> 
+<!--Waze-->		<a class="tile" role="listitem" href="https://www.waze.com" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-image: url('https://web-assets.waze.com/livemap/stg/app-driver-af88bd646b4c4f9fa810b33bd4c9be12.svg'); background-size: contain; background-position: center;"></span><span class="label">Waze</span></a>						   <!-- /Waze> -->
+<!--Scholar--><a class="tile" role="listitem" href="https://scholar.google.com" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-image: url('https://www.gstatic.com/marketing-cms/assets/images/85/8d/cbb8047c41939c3212fbe237af6e/scholar.png=s96-fcrop64=1,00000000ffffffff-rw'); background-size: contain; background-position: center;"></span><span class="label">Scholar</span></a><!-- /Scholar>  --> 
+			
+		          <a class="tile" role="listitem" href="https://contacts.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -464px"></span><span class="label">Contacts</span></a>
+          <a class="tile" role="listitem" href="https://adsense.google.com" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -2608px"></span><span class="label">AdSense</span></a>
+          <a class="tile" role="listitem" href="https://www.google.com/travel/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -1045px"></span><span class="label">Travel</span></a>
+			
+
+          <a class="tile" role="listitem" href="https://play.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -1798px"></span><span class="label">Play</span></a>
+          <a class="tile" role="listitem" href="https://docs.google.com/document/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -2204px"></span><span class="label">Docs</span></a>
+          <a class="tile" role="listitem" href="https://docs.google.com/spreadsheets/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -406px"></span><span class="label">Sheets</span></a>
+
+          <a class="tile" role="listitem" href="https://docs.google.com/presentation/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -2262px"></span><span class="label">Slides</span></a>
+          <a class="tile" role="listitem" href="https://books.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -1392px"></span><span class="label">Books</span></a>
+          <a class="tile" role="listitem" href="https://blogger.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -2320px"></span><span class="label">Blogger</span></a>
+
+          <a class="tile" role="listitem" href="https://forms.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -290px"></span><span class="label">Forms</span></a>
+          <a class="tile" role="listitem" href="https://www.google.com/trends" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -60px"></span><span class="label">Trends</span></a>
+          <a class="tile" role="listitem" href="https://classroom.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -635px"></span><span class="label">Classroom</span></a>
+
+<a class="tile" role="listitem" href="https://keep.google.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -120px"></span><span class="label">Keep</span></a>
+          <a class="tile" role="listitem" href="https://calendar.google.com/calendar" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -1334px"></span><span class="label">Calendar</span></a>
+          <!-- last row: YouTube Music then two empty placeholders -->
+          <a class="tile" role="listitem" href="https://music.youtube.com/" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-position:0 -2725px"></span><span class="label">YT Music</span></a>
+
+          <!-- two empty placeholder tiles to preserve grid shape -->
+			
+          <div style="width:84px;height:84px;"></div>
+			<a class="tile" role="listitem" href="https://about.google/products/#google-products" target="_blank" rel="noopener noreferrer"><span class="icon" style="background-image: url('https://web.archive.org/web/20251108141719if_/videos.openai.com/az/vg-assets/task_01k9hx435keqwrevg2t93vmg7m%2F1762611359_img_1.webp?se=2025-11-14T00%3A00%3A00Z&sp=r&sv=2024-08-04&sr=b&skoid=8ffff87a-01f1-47c9-9090-32999d4d6380&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2025-11-08T01%3A07%3A51Z&ske=2025-11-15T01%3A12%3A51Z&sks=b&skv=2024-08-04&sig=A3LGi30CxXjwh4OwiCfsUzx2AUDWx2pTWgZWeXfJLLA%3D&ac=oaivgprodscus2); background-size: contain; background-position: center;"></span><span class="label"><strong>MOAR!!!</strong></span></a>
+          <div style="width:84px;height:84px;">				  
+          </div>
+        </div>
+      </div> <!-- /.scroll-area -->
+    </div> <!-- /.widget-card -->
+  </div> <!-- /.widget-frame -->
+
+<script>
+/* ======= Customizable suggestions list (is sandbox-safe i.e. portable in theory, not working on Google Sites though.) =======
+   Edit this array to add suggestions if you can get it working in your deployment.  Google sites appears to be blocking the script.
+   The search should filter these by substring match if you get it working (it is currently functional in Dreamweaver).
+*/
+const SUGGESTIONS = [
+  "Gmail", "Drive", "Maps", "YouTube", "News", "Photos", "Calendar",
+  "Docs", "Sheets", "Slides", "Meet", "Chat", "Translate", "Play Store", "Extensions"
+  "Contacts", "Google Account", "Google Search tips", "Google Trends",
+  "Google Finance", "Google Books", "Google Ads", "Forms", "Classroom",
+  "Keep", "Jamboard", "Earth", "YouTube Music", "Blogger", "Travel",
+  "Collections", "Google Shopping", "Duo", "Stadia" 
+];
+
+/* DOM refs */
+const input = document.getElementById('searchInput');
+const suggestBox = document.getElementById('suggestBox');
+const suggestList = document.getElementById('suggestList');
+const searchForm = document.getElementById('searchForm');
+let activeIndex = -1; // keyboard selection index
+
+/* Utility: escape HTML (safe insertion) */
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]); });
+}
+
+/* Build filtered suggestion list and show dropdown */
+function showSuggestions(q){
+  const val = (q||"").trim().toLowerCase();
+  const matches = val.length === 0 ? SUGGESTIONS.slice(0,8)
+    : SUGGESTIONS.filter(s => s.toLowerCase().includes(val)).slice(0,8);
+
+  suggestList.innerHTML = '';
+  if(matches.length === 0){
+    suggestBox.setAttribute('aria-hidden','true');
+    suggestBox.style.display = 'none';
+    return;
+  }
+
+  matches.forEach((s, i) => {
+    const li = document.createElement('li');
+    li.setAttribute('role','option');
+    li.setAttribute('data-index', i);
+    li.tabIndex = -1;
+    li.innerHTML = escapeHtml(s);
+    li.addEventListener('click', (ev) => {
+      input.value = s;
+      hideSuggestions();
+      submitSearch(s);
+    });
+    li.addEventListener('mousemove', () => {
+      // clear previous selection and mark this
+      setActiveIndex(i);
+    });
+    suggestList.appendChild(li);
+  });
+
+  activeIndex = -1;
+  suggestBox.setAttribute('aria-hidden','false');
+  suggestBox.style.display = 'block';
+}
+
+/* Hide suggestions */
+function hideSuggestions(){
+  suggestBox.setAttribute('aria-hidden','true');
+  suggestBox.style.display = 'none';
+  activeIndex = -1;
+}
+
+/* Set active (highlighted) item by index */
+function setActiveIndex(idx){
+  const items = suggestList.querySelectorAll('li');
+  items.forEach((it, i) => {
+    if(i === idx){
+      it.setAttribute('aria-selected','true');
+      it.scrollIntoView({block:'nearest'});
+    } else {
+      it.removeAttribute('aria-selected');
+    }
+  });
+  activeIndex = idx;
+}
+
+/* Keyboard handling for input */
+input.addEventListener('keydown', (ev) => {
+  const items = suggestList.querySelectorAll('li');
+  if(ev.key === 'ArrowDown'){
+    ev.preventDefault();
+    if(items.length === 0){ showSuggestions(input.value); return; }
+    let next = activeIndex + 1;
+    if(next >= items.length) next = 0;
+    setActiveIndex(next);
+  } else if(ev.key === 'ArrowUp'){
+    ev.preventDefault();
+    if(items.length === 0){ showSuggestions(input.value); return; }
+    let next = activeIndex - 1;
+    if(next < 0) next = items.length - 1;
+    setActiveIndex(next);
+  } else if(ev.key === 'Enter'){
+    // If an item is selected, use it; otherwise let form submit
+    if(activeIndex >= 0){
+      ev.preventDefault();
+      const sel = suggestList.querySelectorAll('li')[activeIndex];
+      if(sel){
+        input.value = sel.textContent;
+        hideSuggestions();
+        submitSearch(input.value);
+      }
+    } else {
+      // default: allow form to submit (opens new tab to Google)
+      hideSuggestions();
+    }
+  } else if(ev.key === 'Escape'){
+    hideSuggestions();
+  }
+});
+
+/* Input event: update suggestions */
+let debounceTimer = null;
+input.addEventListener('input', (ev) => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    showSuggestions(input.value);
+  }, 120);
+});
+
+/* Click outside to hide suggestions */
+document.addEventListener('click', (ev) => {
+  // if click is inside widget-header or suggestBox do nothing
+  const header = document.querySelector('.widget-header');
+  if(header.contains(ev.target)) return;
+  hideSuggestions();
+});
+
+/* Submit helper: open google search in new tab */
+function submitSearch(q){
+  if(!q || q.trim() === '') return;
+  const url = 'https://www.google.com/search?q=' + encodeURIComponent(q.trim());
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+/* Form submit: used when user presses enter without selecting suggestion */
+searchForm.addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const q = input.value.trim();
+  if(q) submitSearch(q);
+  hideSuggestions();
+});
+
+/* Accessibility: when suggestions shown, set aria-expanded on search-box */
+const searchBoxEl = document.querySelector('.search-box');
+const observer = new MutationObserver(() => {
+  const visible = suggestBox.getAttribute('aria-hidden') === 'false';
+  searchBoxEl.setAttribute('aria-expanded', visible ? 'true' : 'false');
+});
+observer.observe(suggestBox, { attributes: true, attributeFilter: ['aria-hidden'] });
+
+/* keyboard navigation inside suggestions (Enter/Click already handled) */
+/* nothing more needed; basic functionality implemented above */
+
+/* A pre-populate suggestions code stub chatGPT put in "if input focused and empty", whatever that means. */
+input.addEventListener('focus', () => {
+  if(!input.value.trim()) showSuggestions('');
+});
+</script>
+<!--Dev mailto:A_E_A_D_R@icloud.com-->
+</body>
+</html>
